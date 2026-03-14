@@ -35,16 +35,32 @@
 
   "tickets": {
     "panelChannelId": "",
+    "supportRoleId": "",
+    "supportManagerRoleId": "",
+    "ticketTranscriptsChannelId": "",
+    "categories": [
+      { "id": "general", "label": "General Support", "emoji": "💬" },
+      { "id": "bugs", "label": "Bug Report", "emoji": "🐛" },
+      { "id": "purchase", "label": "Purchase Help", "emoji": "🛒" }
+    ],
     "messages": {
       "panelTitle": "Support Tickets",
-      "panelDescription": "Click the button below to open a support ticket. A thread will be created in this channel.",
+      "panelDescription": "Choose a category below to open a support ticket. A thread will be created in this channel.",
+      "panelCategoriesTitle": "Categories",
       "buttonLabel": "Create Ticket",
       "buttonEmoji": "🎫",
       "threadCreated": "Your ticket has been created! Please describe your issue here.",
       "threadNamePrefix": "ticket-",
       "closeInstruction": "A staff member will assist you shortly. Use the button below to close this ticket when done.",
       "closeButtonLabel": "Close Ticket",
-      "closeButtonEmoji": "🔒"
+      "closeButtonEmoji": "🔒",
+      "addSuccess": "**{user}** has been added to this ticket.",
+      "addFail": "Could not add that user to the ticket.",
+      "removeSuccess": "**{user}** has been removed from this ticket.",
+      "removeFail": "Could not remove that user from the ticket.",
+      "escalateSuccess": "This ticket has been escalated. Support manager has been notified.",
+      "escalateFail": "Escalation failed. Check that `supportManagerRoleId` is set in config.",
+      "closeSuccess": "This ticket has been closed."
     }
   },
 

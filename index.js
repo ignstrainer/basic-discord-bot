@@ -9,6 +9,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   PermissionFlagsBits,
+  MessageType,
 } = require('discord.js');
 
 // Load config
@@ -79,6 +80,41 @@ function replaceTemplate(str, obj) {
   return str.replace(/\{(\w+)\}/g, (_, k) => (obj[k] != null ? String(obj[k]) : `{${k}}`));
 }
 
+// Build and send ticket transcript to the transcripts channel
+async function sendTicketTranscript(thread) {
+  const transcriptChId = config.tickets?.ticketTranscriptsChannelId;
+  if (!transcriptChId) return;
+  const transcriptCh = await client.channels.fetch(transcriptChId).catch(() => null);
+  if (!transcriptCh) return;
+  let messages = [];
+  let lastId;
+  do {
+    const opts = { limit: 100 };
+    if (lastId) opts.before = lastId;
+    const batch = await thread.messages.fetch(opts).catch(() => null);
+    if (!batch || batch.size === 0) break;
+    messages = messages.concat(Array.from(batch.values()));
+    lastId = batch.last().id;
+    if (batch.size < 100) break;
+  } while (true);
+  messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+  const lines = messages.map((m) => {
+    const date = new Date(m.createdTimestamp);
+    const time = date.toISOString().replace('T', ' ').slice(0, 19);
+    const author = m.author.tag;
+    const content = m.content || '(no text)';
+    const attachments = m.attachments.size ? m.attachments.map((a) => a.url).join(' ') : '';
+    return `[${time}] ${author}: ${content}${attachments ? ' (Attachments: ' + attachments + ')' : ''}`;
+  });
+  const body = `Transcript: ${thread.name} (ID: ${thread.id})\nCreated: ${thread.createdAt?.toISOString?.() ?? '?'}\n${'─'.repeat(50)}\n${lines.join('\n')}`;
+  const buffer = Buffer.from(body, 'utf8');
+  const safeName = thread.name.replace(/[^a-z0-9-_]/gi, '_').slice(0, 80);
+  await transcriptCh.send({
+    embeds: [new EmbedBuilder().setTitle(`Ticket: ${thread.name}`).setColor(0x5865f2).setTimestamp()],
+    files: [{ attachment: buffer, name: `transcript-${safeName}-${thread.id}.txt` }],
+  }).catch(() => {});
+}
+
 client.on('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
   const status = config.status || {};
@@ -131,19 +167,95 @@ client.on('messageCreate', async (message) => {
       return;
     }
     const t = config.tickets.messages || {};
+    const categories = config.tickets?.categories || [];
+    let description = t.panelDescription || 'Click a button below to open a ticket.';
+    if (categories.length > 0 && t.panelCategoriesTitle) {
+      const categoryLines = categories.map((c) => `${c.emoji || '•'} **${c.label}**`).join('\n');
+      description += `\n\n**${t.panelCategoriesTitle}**\n${categoryLines}`;
+    }
     const embed = new EmbedBuilder()
       .setTitle(t.panelTitle || 'Support Tickets')
-      .setDescription(t.panelDescription || 'Click the button below to open a ticket.')
+      .setDescription(description)
       .setColor(0x5865f2);
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('create_ticket')
-        .setLabel(t.buttonLabel || 'Create Ticket')
-        .setEmoji(t.buttonEmoji || '🎫')
-        .setStyle(ButtonStyle.Primary)
-    );
-    await message.channel.send({ embeds: [embed], components: [row] });
+    const rows = [];
+    if (categories.length > 0) {
+      for (let i = 0; i < categories.length; i += 5) {
+        const chunk = categories.slice(i, i + 5);
+        const row = new ActionRowBuilder().addComponents(
+          chunk.map((c) =>
+            new ButtonBuilder()
+              .setCustomId(`create_ticket:${c.id}`)
+              .setLabel(c.label.slice(0, 80))
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji(c.emoji || '🎫')
+          )
+        );
+        rows.push(row);
+      }
+    } else {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('create_ticket')
+          .setLabel(t.buttonLabel || 'Create Ticket')
+          .setEmoji(t.buttonEmoji || '🎫')
+          .setStyle(ButtonStyle.Primary)
+      );
+      rows.push(row);
+    }
+    await message.channel.send({ embeds: [embed], components: rows });
     await message.delete().catch(() => {});
+    return;
+  }
+
+  // Ticket commands (add, remove, escalate) – only inside ticket threads
+  const panelChId = config.tickets?.panelChannelId;
+  const isTicketThread = message.channel.isThread() && message.channel.parentId === panelChId;
+  if (isTicketThread && ['add', 'remove', 'escalate', 'close'].includes(command)) {
+    const canManage = message.member.permissions.has(PermissionFlagsBits.ManageThreads) || message.channel.ownerId === message.author.id;
+    if (!canManage) {
+      await message.reply('Only the ticket creator or staff can use ticket commands here.').catch(() => {});
+      return;
+    }
+    const tMsg = config.tickets?.messages || {};
+    if (command === 'close') {
+      await message.reply(tMsg.closeSuccess || 'Ticket closed.').catch(() => {});
+      await sendTicketTranscript(message.channel);
+      await message.channel.setArchived(true).catch(() => {});
+      return;
+    }
+    if (command === 'escalate') {
+      const managerRoleId = config.tickets?.supportManagerRoleId;
+      if (!managerRoleId) {
+        await message.reply(tMsg.escalateFail || 'Escalation not configured.').catch(() => {});
+        return;
+      }
+      const thread = message.channel;
+      const currentName = thread.name;
+      if (!currentName.toLowerCase().includes('escalated')) {
+        const newName = (currentName + '-escalated').slice(0, 100);
+        await thread.setName(newName).catch(() => {});
+      }
+      await thread.send(`<@&${managerRoleId}> Ticket escalated by ${message.author}.`).catch(() => {});
+      await message.reply(tMsg.escalateSuccess || 'Ticket escalated.').catch(() => {});
+      return;
+    }
+    const ticketUser = message.mentions.users.first();
+    if (!ticketUser) {
+      await message.reply(`Please mention a user to ${command} (e.g. \`!${command} @user\`).`).catch(() => {});
+      return;
+    }
+    try {
+      if (command === 'add') {
+        await message.channel.members.add(ticketUser.id);
+        await message.reply(replaceTemplate(tMsg.addSuccess || '**{user}** has been added.', { user: ticketUser.tag })).catch(() => {});
+      } else {
+        await message.channel.members.remove(ticketUser.id);
+        await message.reply(replaceTemplate(tMsg.removeSuccess || '**{user}** has been removed.', { user: ticketUser.tag })).catch(() => {});
+      }
+    } catch (e) {
+      const failMsg = command === 'add' ? (tMsg.addFail || 'Could not add user.') : (tMsg.removeFail || 'Could not remove user.');
+      await message.reply(failMsg).catch(() => {});
+    }
     return;
   }
 
@@ -287,18 +399,26 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
     await interaction.deferReply();
+    await sendTicketTranscript(interaction.channel);
     await interaction.channel.setArchived(true).catch(() => {});
     await interaction.editReply({ content: 'Ticket closed.' }).catch(() => {});
     return;
   }
 
-  if (interaction.customId !== 'create_ticket') return;
+  const isCreateTicket = interaction.customId === 'create_ticket' || interaction.customId.startsWith('create_ticket:');
+  if (!isCreateTicket) return;
   if (!panelChId || interaction.channel.id !== panelChId) return;
+
+  const categoryId = interaction.customId.includes(':') ? interaction.customId.slice('create_ticket:'.length) : '';
+  const categories = config.tickets?.categories || [];
+  const category = categories.find((c) => c.id === categoryId);
 
   await interaction.deferReply({ ephemeral: true });
   const t = config.tickets.messages || {};
   const prefix = t.threadNamePrefix || 'ticket-';
-  const name = `${prefix}${interaction.user.username}-${Date.now().toString(36)}`;
+  const slug = categoryId ? categoryId.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 20) : '';
+  const namePart = slug ? `${prefix}${slug}-${interaction.user.username}` : `${prefix}${interaction.user.username}`;
+  const name = `${namePart}-${Date.now().toString(36)}`;
   try {
     const thread = await interaction.channel.threads.create({
       name: name.slice(0, 100),
@@ -313,7 +433,15 @@ client.on('interactionCreate', async (interaction) => {
         .setStyle(ButtonStyle.Secondary)
     );
     const body = [replaceTemplate(t.threadCreated || 'Your ticket has been created!', {}), t.closeInstruction].filter(Boolean).join('\n\n');
-    await thread.send({ content: body, components: [closeRow] });
+    const supportRoleId = config.tickets?.supportRoleId;
+    const content = (supportRoleId ? `<@&${supportRoleId}> ` : '') + body;
+    await thread.send({ content, components: [closeRow] });
+    const parent = interaction.channel;
+    const recent = await parent.messages.fetch({ limit: 5 }).catch(() => null);
+    if (recent) {
+      const threadCreatedMsg = recent.find((m) => m.type === MessageType.ThreadCreated);
+      if (threadCreatedMsg) await threadCreatedMsg.delete().catch(() => {});
+    }
     await interaction.editReply({ content: `Ticket created: ${thread}` }).catch(() => {});
   } catch (e) {
     await interaction.editReply({ content: 'Failed to create ticket. Check bot permissions (Create Public Threads).' }).catch(() => {});
