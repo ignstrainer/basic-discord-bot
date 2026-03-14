@@ -1,0 +1,64 @@
+{
+  "token": "YOUR_BOT_TOKEN_HERE",
+  "clientId": "YOUR_CLIENT_ID_HERE",
+
+  "prefix": "!",
+
+  "status": {
+    "type": "WATCHING",
+    "text": "the server",
+    "types": ["PLAYING", "WATCHING", "LISTENING", "STREAMING", "COMPETING"]
+  },
+
+  "moderation": {
+    "modLogChannelId": "",
+    "muteRoleId": "",
+    "messages": {
+      "banSuccess": "**{user}** has been banned. Reason: {reason}",
+      "banFail": "I could not ban that user. Check my role is above theirs.",
+      "kickSuccess": "**{user}** has been kicked. Reason: {reason}",
+      "kickFail": "I could not kick that user. Check my role is above theirs.",
+      "muteSuccess": "**{user}** has been muted for {duration}. Reason: {reason}",
+      "muteFail": "I could not mute that user. Ensure the mute role exists and is below my role.",
+      "unmuteSuccess": "**{user}** has been unmuted.",
+      "warnSuccess": "**{user}** has been warned. They now have {count} warning(s). Reason: {reason}",
+      "warningsList": "**Warnings for {user}:**\n{warnings}",
+      "noWarnings": "**{user}** has no warnings.",
+      "warningsCleared": "All warnings for **{user}** have been cleared.",
+      "modLogBan": "**Ban** | User: {user} ({id}) | By: {mod} | Reason: {reason}",
+      "modLogKick": "**Kick** | User: {user} ({id}) | By: {mod} | Reason: {reason}",
+      "modLogMute": "**Mute** | User: {user} ({id}) | By: {mod} | Duration: {duration} | Reason: {reason}",
+      "modLogUnmute": "**Unmute** | User: {user} ({id}) | By: {mod}",
+      "modLogWarn": "**Warn** | User: {user} ({id}) | By: {mod} | Reason: {reason} | Total: {count}"
+    }
+  },
+
+  "tickets": {
+    "panelChannelId": "",
+    "messages": {
+      "panelTitle": "Support Tickets",
+      "panelDescription": "Click the button below to open a support ticket. A thread will be created in this channel.",
+      "buttonLabel": "Create Ticket",
+      "buttonEmoji": "🎫",
+      "threadCreated": "Your ticket has been created! Please describe your issue here.",
+      "threadNamePrefix": "ticket-",
+      "closeInstruction": "A staff member will assist you shortly. Use the button below to close this ticket when done.",
+      "closeButtonLabel": "Close Ticket",
+      "closeButtonEmoji": "🔒"
+    }
+  },
+
+  "infoMessages": {
+    "enabled": true,
+    "channelIds": [],
+    "minMessagesBetween": 20,
+    "minMinutesBetween": 30,
+    "messages": [
+      "**Who are we?** We're a friendly community! Say hi in chat.",
+      "**Need help?** Open a ticket using the button above!",
+      "**Rules:** Be kind, no spam, and have fun!",
+      "**Tip:** Use the correct channels for off-topic and support.",
+      "**Welcome!** New here? Introduce yourself in the intro channel."
+    ]
+  }
+}
